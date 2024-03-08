@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "esp_event.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include "esp_nimble_hci.h"
@@ -15,6 +13,11 @@
 #include "driver/gpio.h"
 
 #include "bluetooth.h"
+
+char *TAG = "BLE-Server";
+uint8_t ble_addr_type;
+struct ble_gap_adv_params adv_params;
+bool status = false;
 
 // Write data to ESP32 defined as server
 int device_write(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -66,7 +69,7 @@ const struct ble_gatt_svc_def gatt_svcs[] = {
          {.uuid = BLE_UUID16_DECLARE(0xFEF4), // Define UUID for reading
           .flags = BLE_GATT_CHR_F_READ,
           .access_cb = device_read},
-         {.uuid = BLE_UUID16_DECLARE(0xDEAD), // Define UUID for writing
+         {.uuid = BLE_UUID32_DECLARE(0xDEADDEAD), // Define UUID for writing
           .flags = BLE_GATT_CHR_F_WRITE,
           .access_cb = device_write},
          {0}}},
@@ -165,6 +168,9 @@ void boot_creds_clear(void *param)
                 status = true;
                 vTaskDelay(100);
                 m = esp_timer_get_time();
+
+                int value = gpio_get_level(GPIO_NUM_15);
+                ESP_LOGI("TEST", "GPIO 15 Input : %d", value);
             }
         }
         else

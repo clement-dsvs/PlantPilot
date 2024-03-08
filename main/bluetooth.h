@@ -1,11 +1,6 @@
 #ifndef BLUETOOTH_H
 #define BLUETOOTH_H
 
-char *TAG = "BLE-Server";
-uint8_t ble_addr_type;
-struct ble_gap_adv_params adv_params;
-bool status = false;
-
 int device_write(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 int device_read(uint16_t con_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
