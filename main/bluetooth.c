@@ -22,33 +22,8 @@ bool status = false;
 // Write data to ESP32 defined as server
 int device_write(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    // printf("Data from the client: %.*s\n", ctxt->om->om_len, ctxt->om->om_data);
     char *data = (char *)ctxt->om->om_data;
-    printf("%d %s\n", strcmp(data, (char *)"LIGHT ON") == 0, data);
-    if (strcmp(data, (char *)"LIGHT ON\0") == 0)
-    {
-        printf("LIGHT ON\n");
-        gpio_set_level(GPIO_NUM_2, 1);
-    }
-    else if (strcmp(data, (char *)"LIGHT OFF\0") == 0)
-    {
-        printf("LIGHT OFF\n");
-        gpio_set_level(GPIO_NUM_2, 0);
-    }
-    else if (strcmp(data, (char *)"LED ON\0") == 0)
-    {
-        printf("LED ON\n");
-        gpio_set_level(GPIO_NUM_4, 1);
-    }
-    else if (strcmp(data, (char *)"LED OFF\0") == 0)
-    {
-        printf("LED OFF\n");
-        gpio_set_level(GPIO_NUM_4, 0);
-    }
-    else
-    {
-        printf("Data from the client: %.*s\n", ctxt->om->om_len, ctxt->om->om_data);
-    }
+    printf("Data from the client: %.*s\n", ctxt->om->om_len, ctxt->om->om_data);
     memset(data, 0, strlen(data));
     return 0;
 }
@@ -60,6 +35,22 @@ int device_read(uint16_t con_handle, uint16_t attr_handle, struct ble_gatt_acces
     return 0;
 }
 
+int device_write_pump(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    uint8_t values[4] = { 0 };
+
+    for(int i = 0; i < ctxt->om->om_len; i++)
+    {
+        values[i] = *(ctxt->om->om_data + i * sizeof(uint8_t));
+    }
+
+    uint32_t result = (values[3] << 24) + (values[2] << 16) + (values[1] << 8) + values[0];
+
+    printf("Turn pump on for %lu ms\n", result);
+
+    return 0; // Success
+}
+
 // Array of pointers to other service definitions
 // UUID - Universal Unique Identifier
 const struct ble_gatt_svc_def gatt_svcs[] = {
@@ -69,9 +60,12 @@ const struct ble_gatt_svc_def gatt_svcs[] = {
          {.uuid = BLE_UUID16_DECLARE(0xFEF4), // Define UUID for reading
           .flags = BLE_GATT_CHR_F_READ,
           .access_cb = device_read},
-         {.uuid = BLE_UUID32_DECLARE(0xDEADDEAD), // Define UUID for writing
+         {.uuid = BLE_UUID16_DECLARE(0xDEAD), // Define UUID for writing
           .flags = BLE_GATT_CHR_F_WRITE,
           .access_cb = device_write},
+         {.uuid = BLE_UUID16_DECLARE(0xABAB), // Define UUID for writing
+                 .flags = BLE_GATT_CHR_F_WRITE,
+                 .access_cb = device_write_pump},
          {0}}},
     {0}};
 
@@ -152,7 +146,6 @@ void connect_ble(void)
 
 void boot_creds_clear(void *param)
 {
-    // printf("%lld\n", n - m);
     int64_t m = esp_timer_get_time();
     while (1)
     {
@@ -168,9 +161,6 @@ void boot_creds_clear(void *param)
                 status = true;
                 vTaskDelay(100);
                 m = esp_timer_get_time();
-
-                int value = gpio_get_level(GPIO_NUM_15);
-                ESP_LOGI("TEST", "GPIO 15 Input : %d", value);
             }
         }
         else
