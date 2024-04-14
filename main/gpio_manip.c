@@ -14,7 +14,8 @@ volatile uint32_t* gpio_enable_reg = (volatile uint32_t*) GPIO_ENABLE_REG;
 
 void gpio_enable_output(gpio_num_t gpio_num)
 {
-    *gpio_enable_reg = (1 << gpio_num);
+    *gpio_enable_reg += (1 << gpio_num);
+    // FIXME
 }
 
 void gpio_set_output(gpio_num_t gpio_num, uint32_t level)

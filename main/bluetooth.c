@@ -11,10 +11,13 @@
 #include "services/gatt/ble_svc_gatt.h"
 #include "sdkconfig.h"
 #include "driver/gpio.h"
+#include "driver/adc.h"
 
 #include "bluetooth.h"
+#include "gpio_manip.h"
+#include "cJSON.h"
 
-char *TAG = "BLE-Server";
+char *TAG = "PlantPilot Device";
 uint8_t ble_addr_type;
 struct ble_gap_adv_params adv_params;
 bool status = false;
@@ -31,8 +34,30 @@ int device_write(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_acc
 // Read data from ESP32 defined as server
 int device_read(uint16_t con_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    os_mbuf_append(ctxt->om, "Data from the server", strlen("Data from the server"));
+    // Attendre la fin de la conversion
+    int32_t adc_reading = adc1_get_raw(ADC1_CHANNEL_0);
+
+    cJSON* root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "humidity", adc_reading);
+    cJSON_AddNumberToObject(root, "niveau_eau", 75);
+
+    char* json_str = cJSON_PrintUnformatted(root);
+    printf("%s\n", json_str);
+
+    os_mbuf_append(ctxt->om, json_str, strlen(json_str));
     return 0;
+}
+
+void power_pump(void* arg)
+{
+    uint32_t time = *(uint32_t *)arg;
+    printf("turn pump on for %lu ms\n", time);
+    gpio_set_output(5, 1);
+
+    vTaskDelay(pdMS_TO_TICKS(time));
+    gpio_set_output(5, 0);
+    printf("pump off\n");
+    vTaskDelete(NULL);
 }
 
 int device_write_pump(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -46,13 +71,14 @@ int device_write_pump(uint16_t conn_handle, uint16_t attr_handle, struct ble_gat
 
     uint32_t result = (values[3] << 24) + (values[2] << 16) + (values[1] << 8) + values[0];
 
-    printf("Turn pump on for %lu ms\n", result);
+    xTaskCreate(power_pump, "power_pump_bt", 4096, &result, 5, NULL);
 
     return 0; // Success
 }
 
 // Array of pointers to other service definitions
 // UUID - Universal Unique Identifier
+
 const struct ble_gatt_svc_def gatt_svcs[] = {
     {.type = BLE_GATT_SVC_TYPE_PRIMARY,
      .uuid = BLE_UUID16_DECLARE(0x180), // Define UUID for device type
@@ -60,9 +86,6 @@ const struct ble_gatt_svc_def gatt_svcs[] = {
          {.uuid = BLE_UUID16_DECLARE(0xFEF4), // Define UUID for reading
           .flags = BLE_GATT_CHR_F_READ,
           .access_cb = device_read},
-         {.uuid = BLE_UUID16_DECLARE(0xDEAD), // Define UUID for writing
-          .flags = BLE_GATT_CHR_F_WRITE,
-          .access_cb = device_write},
          {.uuid = BLE_UUID16_DECLARE(0xABAB), // Define UUID for writing
                  .flags = BLE_GATT_CHR_F_WRITE,
                  .access_cb = device_write_pump},
@@ -135,7 +158,7 @@ void connect_ble(void)
     nvs_flash_init(); // 1 - Initialize NVS flash using
     // esp_nimble_hci_and_controller_init();      // 2 - Initialize ESP controller
     nimble_port_init();                        // 3 - Initialize the host stack
-    ble_svc_gap_device_name_set("BLE-Server"); // 4 - Initialize NimBLE configuration - server name
+    ble_svc_gap_device_name_set(TAG); // 4 - Initialize NimBLE configuration - server name
     ble_svc_gap_init();                        // 4 - Initialize NimBLE configuration - gap service
     ble_svc_gatt_init();                       // 4 - Initialize NimBLE configuration - gatt service
     ble_gatts_count_cfg(gatt_svcs);            // 4 - Initialize NimBLE configuration - config gatt services
@@ -171,7 +194,7 @@ void boot_creds_clear(void *param)
         if (status)
         {
             // ESP_LOGI("GAP", "BLE GAP status");
-            adv_params.conn_mode = BLE_GAP_CONN_MODE_UND; // connectable or non-connectable
+            adv_params.conn_mode = BLE_GAP_CONN_MODE_DIR; // connectable or non-connectable
             adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN; // discoverable or non-discoverable
             ble_gap_adv_start(ble_addr_type, NULL, BLE_HS_FOREVER, &adv_params, ble_gap_event, NULL);
         }
